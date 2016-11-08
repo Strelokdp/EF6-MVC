@@ -86,7 +86,7 @@ namespace ContosoUniversity.Controllers
             return View(course);
         }
 
-
+        // GET: Instructor/Edit/5
         public ActionResult Edit(int? id)
         {
             if (id == null)
@@ -95,8 +95,10 @@ namespace ContosoUniversity.Controllers
             }
             Instructor instructor = db.Instructors
                 .Include(i => i.OfficeAssignment)
+                .Include(i => i.Courses)
                 .Where(i => i.ID == id)
                 .Single();
+            PopulateAssignedCourseData(instructor);
             if (instructor == null)
             {
                 return HttpNotFound();
@@ -104,9 +106,9 @@ namespace ContosoUniversity.Controllers
             return View(instructor);
         }
 
-        [HttpPost, ActionName("Edit")]
+        [HttpPost]
         [ValidateAntiForgeryToken]
-        public ActionResult EditPost(int? id)
+        public ActionResult Edit(int? id, string[] selectedCourses)
         {
             if (id == null)
             {
@@ -114,6 +116,7 @@ namespace ContosoUniversity.Controllers
             }
             var instructorToUpdate = db.Instructors
                .Include(i => i.OfficeAssignment)
+               .Include(i => i.Courses)
                .Where(i => i.ID == id)
                .Single();
 
@@ -127,6 +130,8 @@ namespace ContosoUniversity.Controllers
                         instructorToUpdate.OfficeAssignment = null;
                     }
 
+                    UpdateInstructorCourses(selectedCourses, instructorToUpdate);
+
                     db.SaveChanges();
 
                     return RedirectToAction("Index");
@@ -137,6 +142,7 @@ namespace ContosoUniversity.Controllers
                     ModelState.AddModelError("", "Unable to save changes. Try again, and if the problem persists, see your system administrator.");
                 }
             }
+            PopulateAssignedCourseData(instructorToUpdate);
             return View(instructorToUpdate);
         }
 
@@ -182,6 +188,53 @@ namespace ContosoUniversity.Controllers
                                    orderby d.Name
                                    select d;
             ViewBag.DepartmentID = new SelectList(departmentsQuery, "DepartmentID", "Name", selectedDepartment);
+        }
+
+        private void PopulateAssignedCourseData(Instructor instructor)
+        {
+            var allCourses = db.Courses;
+            var instructorCourses = new HashSet<int>(instructor.Courses.Select(c => c.CourseID));
+            var viewModel = new List<AssignedCourseData>();
+            foreach (var course in allCourses)
+            {
+                viewModel.Add(new AssignedCourseData
+                {
+                    CourseID = course.CourseID,
+                    Title = course.Title,
+                    Assigned = instructorCourses.Contains(course.CourseID)
+                });
+            }
+            ViewBag.Courses = viewModel;
+        }
+
+        private void UpdateInstructorCourses(string[] selectedCourses, Instructor instructorToUpdate)
+        {
+            if (selectedCourses == null)
+            {
+                instructorToUpdate.Courses = new List<Course>();
+                return;
+            }
+
+            var selectedCoursesHS = new HashSet<string>(selectedCourses);
+            var instructorCourses = new HashSet<int>
+                (instructorToUpdate.Courses.Select(c => c.CourseID));
+            foreach (var course in db.Courses)
+            {
+                if (selectedCoursesHS.Contains(course.CourseID.ToString()))
+                {
+                    if (!instructorCourses.Contains(course.CourseID))
+                    {
+                        instructorToUpdate.Courses.Add(course);
+                    }
+                }
+                else
+                {
+                    if (instructorCourses.Contains(course.CourseID))
+                    {
+                        instructorToUpdate.Courses.Remove(course);
+                    }
+                }
+            }
         }
     }
 }
