@@ -60,30 +60,33 @@ namespace ContosoUniversity.Controllers
 
         public ActionResult Create()
         {
-            PopulateDepartmentsDropDownList();
+            var instructor = new Instructor();
+            instructor.Courses = new List<Course>();
+            PopulateAssignedCourseData(instructor);
             return View();
         }
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public ActionResult Create([Bind(Include = "CourseID,Title,Credits,DepartmentID")]Course course)
+        public ActionResult Create([Bind(Include = "LastName,FirstMidName,HireDate,OfficeAssignment")]Instructor instructor, string[] selectedCourses)
         {
-            try
+            if (selectedCourses != null)
             {
-                if (ModelState.IsValid)
+                instructor.Courses = new List<Course>();
+                foreach (var course in selectedCourses)
                 {
-                    db.Courses.Add(course);
-                    db.SaveChanges();
-                    return RedirectToAction("Index");
+                    var courseToAdd = db.Courses.Find(int.Parse(course));
+                    instructor.Courses.Add(courseToAdd);
                 }
             }
-            catch (RetryLimitExceededException /* dex */)
+            if (ModelState.IsValid)
             {
-                //Log the error (uncomment dex variable name and add a line here to write a log.)
-                ModelState.AddModelError("", "Unable to save changes. Try again, and if the problem persists, see your system administrator.");
+                db.Instructors.Add(instructor);
+                db.SaveChanges();
+                return RedirectToAction("Index");
             }
-            PopulateDepartmentsDropDownList(course.DepartmentID);
-            return View(course);
+            PopulateAssignedCourseData(instructor);
+            return View(instructor);
         }
 
         // GET: Instructor/Edit/5
@@ -162,13 +165,25 @@ namespace ContosoUniversity.Controllers
             return View(instructor);
         }
 
-        // POST: Instructor/Delete/5
         [HttpPost, ActionName("Delete")]
         [ValidateAntiForgeryToken]
         public ActionResult DeleteConfirmed(int id)
         {
-            Instructor instructor = db.Instructors.Find(id);
+            Instructor instructor = db.Instructors
+              .Include(i => i.OfficeAssignment)
+              .Where(i => i.ID == id)
+              .Single();
+
             db.Instructors.Remove(instructor);
+
+            var department = db.Departments
+                .Where(d => d.InstructorID == id)
+                .SingleOrDefault();
+            if (department != null)
+            {
+                department.InstructorID = null;
+            }
+
             db.SaveChanges();
             return RedirectToAction("Index");
         }
